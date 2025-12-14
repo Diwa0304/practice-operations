@@ -1,0 +1,54 @@
+name: sanity_test
+
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  test_model:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.12"
+
+    - name: Install CML
+      uses: iterative/setup-cml@v2
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+
+    - name: Debug MLflow Connection
+      env:
+        MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+      run: |
+        echo "Attempting to reach MLflow server at: $MLFLOW_TRACKING_URI"
+        curl -v -L --max-time 15 "${{ secrets.MLFLOW_TRACKING_URI }}"
+        echo "If the above output shows a connection error (timeout/refused), check your MLflow server's firewall rules."
+
+    - name: Run unit tests
+      run: |
+        pytest tests/ > test_output.txt
+
+    - name: Create CML report
+      env:
+        REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        echo "## Model Registry Sanity Check" > report.md
+        cat sanity_check_output.txt >> report.md
+        echo "## Test Output" > report.md
+        cat test_output.txt >> report.md
+        echo "\n## Metrics from Training" >> report.md
+        cat metrics.csv >> report.md
+        cml comment create report.md
